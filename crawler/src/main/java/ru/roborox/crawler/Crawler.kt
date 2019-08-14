@@ -6,33 +6,48 @@ import reactor.core.publisher.Mono
 import reactor.core.publisher.switchIfEmpty
 import reactor.core.publisher.toMono
 import ru.roborox.crawler.domain.Page
+import ru.roborox.crawler.domain.PageLog
 import ru.roborox.crawler.domain.Status
+import ru.roborox.crawler.persist.PageLogRepository
 import ru.roborox.crawler.persist.PageRepository
 import java.util.*
 
 @Service
 class Crawler(
     private val pageRepository: PageRepository,
+    private val pageLogRepository: PageLogRepository,
     private val taskScheduler: TaskScheduler
 ) {
     fun <P : HasTaskId> crawl(params: P, loader: Loader<P>): Mono<Void> {
         return markLoading(loader.javaClass.name, params.toTaskId())
             .flatMap { page ->
-                loader.load(page, params)
-                    .flatMap {
-                        when (it) {
-                            is LoadResult.SuccessResult ->
-                                submitAll(it)
-                                    .thenReturn(page.copy(status = Status.SUCCESS))
-                            is LoadResult.ErrorResult ->
-                                page.copy(status = Status.FAILURE).toMono()
-                            else ->
-                                page.copy(status = Status.SKIPPED).toMono()
-                        }
-                    }
-                    .flatMap { pageRepository.save(it) }
+                load(page, params, loader)
             }
             .then()
+    }
+
+    private fun <P : HasTaskId> load(page: Page, params: P, loader: Loader<P>): Mono<Void> {
+        return pageLogRepository.save(PageLog(page.id, Status.LOADING))
+            .flatMap { log ->
+                loader.load(page, params)
+                    .flatMap { scheduleTasks(it) }
+                    .onErrorResume { LoadResult.ErrorResult(it).toMono() }
+                    .flatMap { result ->
+                        Mono.`when`(
+                            pageRepository.save(result.updatePage(page)),
+                            pageLogRepository.save(result.updateLog(log))
+                        )
+                    }
+            }
+    }
+
+    private fun scheduleTasks(result: LoadResult): Mono<LoadResult> {
+        return if (result is LoadResult.SuccessResult) {
+            submitAll(result)
+                .thenReturn(result)
+        } else {
+            result.toMono()
+        }
     }
 
     private fun submitAll(result: LoadResult.SuccessResult): Mono<Void> {

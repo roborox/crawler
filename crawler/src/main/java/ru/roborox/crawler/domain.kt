@@ -1,9 +1,16 @@
 package ru.roborox.crawler
 
+import ru.roborox.crawler.domain.Page
+import ru.roborox.crawler.domain.PageLog
 import ru.roborox.crawler.domain.Status
+import ru.roborox.crawler.exception.StacktraceUtils
+import java.util.*
 
 sealed class LoadResult {
     abstract val status: Status
+
+    open fun updatePage(page: Page): Page = page.copy(status = status)
+    open fun updateLog(log: PageLog): PageLog = log.copy(status = status)
 
     class SuccessResult(
         val tasks: List<LoaderTask<*, *>>
@@ -11,12 +18,21 @@ sealed class LoadResult {
 
         override val status: Status
             get() = Status.SUCCESS
+
+        override fun updatePage(page: Page): Page = page.copy(
+            status = status,
+            lastLoadDate = Date()
+        )
     }
 
-    //todo
-    class ErrorResult(val exception: Exception) : LoadResult() {
+    class ErrorResult(val exception: Throwable) : LoadResult() {
         override val status: Status
             get() = Status.FAILURE
+
+        override fun updateLog(log: PageLog): PageLog = log.copy(
+            status = status,
+            exception = StacktraceUtils.toString(exception)
+        )
     }
 
     object SkippedResult : LoadResult() {

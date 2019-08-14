@@ -36,3 +36,4 @@ data class Page(
     @Version
     val version: Long? = null
 )
+

@@ -4,6 +4,7 @@ import org.springframework.core.io.buffer.DataBuffer
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType.APPLICATION_PDF
 import org.springframework.stereotype.Component
+import org.springframework.util.LinkedMultiValueMap
 import org.springframework.util.MultiValueMap
 import org.springframework.web.reactive.function.client.ClientResponse
 import org.springframework.web.reactive.function.client.WebClient
@@ -19,7 +20,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 interface HttpClient {
-    fun get(url: String, cookie: MultiValueMap<String, String>?): Mono<HttpResponse<String>>
+    fun get(url: String, cookie: MultiValueMap<String, String> = LinkedMultiValueMap()): Mono<HttpResponse<String>>
     fun getBytes(url: String): Flux<DataBuffer>
 }
 
@@ -34,19 +35,12 @@ class HttpClientImpl : HttpClient {
             it.add(HttpHeaders.CACHE_CONTROL, "no-cache")
             it.add(HttpHeaders.CONNECTION, "keep-alive")
         }
-        .defaultCookies {
-            mapOf("imslp_wikiLanguageSelectorLanguage" to "ru",
-                "__qca" to "P0-72016010-1565091561935",
-                "_ga" to "GA1.2.270097156.1565172440",
-                "_gid" to "GA1.2.803481417.1565172441",
-                "imslpdisclaimeraccepted" to "yes").toMuliValueMap()
-        }
         .build()
 
-    override fun get(url: String, cookie: MultiValueMap<String, String>?): Mono<HttpResponse<String>> {
+    override fun get(url: String, cookie: MultiValueMap<String, String>): Mono<HttpResponse<String>> {
         return client.get()
             .uri(url)
-            .cookies { cookies -> if (cookie != null) cookies.addAll(cookie)}
+            .cookies { cookies -> cookies.addAll(cookie) }
             .exchange()
             .map { resp ->
                 HttpResponse(resp.headers()) {
