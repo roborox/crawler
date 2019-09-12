@@ -17,22 +17,30 @@
         </snapshotRepository>
     </distributionManagement>
     <properties>
-        <kotlin.version>1.3.41</kotlin.version>
+        <kotlin.version>1.3.50</kotlin.version>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <kotlin.compiler.jvmTarget>1.8</kotlin.compiler.jvmTarget>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <rpm.user.name>roborox</rpm.user.name>
+
         <spring-data-mongodb.version>2.1.10.RELEASE</spring-data-mongodb.version>
         <spring.version>5.1.9.RELEASE</spring.version>
         <mongodb-driver.version>3.8.2</mongodb-driver.version>
         <mongodb-driver-reactivestreams.version>1.9.2</mongodb-driver-reactivestreams.version>
         <quartz-mongodb.version>2.1.0</quartz-mongodb.version>
-        <reactor-netty.version>0.8.10.RELEASE</reactor-netty.version>
+        <reactor-netty.version>0.8.11.RELEASE</reactor-netty.version>
+        <jackson-databind.version>2.9.9.3</jackson-databind.version>
         <jackson.version>2.9.9</jackson.version>
         <testng.version>6.9.6</testng.version>
         <slf4j.version>1.7.26</slf4j.version>
-        <reactor-core.version>3.2.11.RELEASE</reactor-core.version>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <kotlin.compiler.jvmTarget>1.8</kotlin.compiler.jvmTarget>
+        <reactor-core.version>3.2.12.RELEASE</reactor-core.version>
         <commons-lang3.version>3.5</commons-lang3.version>
         <mockito.version>1.9.0</mockito.version>
+        <logback.version>1.2.3</logback.version>
+        <spring-boot-plugin.version>1.5.8.RELEASE</spring-boot-plugin.version>
+        <roborox.scripts.version>1.0-SNAPSHOT</roborox.scripts.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -89,7 +97,7 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-databind</artifactId>
-                <version>${jackson.version}</version>
+                <version>${jackson-databind.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson.module</groupId>
@@ -136,6 +144,129 @@
     <build>
         <pluginManagement>
             <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <classifier>boot</classifier>
+                        <finalName>${project.artifactId}</finalName>
+                        <outputDirectory>target/${project.artifactId}/lib</outputDirectory>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>ru.roborox.plugin</groupId>
+                    <artifactId>roborox-scripts-plugin</artifactId>
+                    <version>${roborox.scripts.version}</version>
+                    <executions>
+                        <execution>
+                            <id>roborox-scripts</id>
+                            <phase>generate-resources</phase>
+                            <goals>
+                                <goal>generate-scripts</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>rpm-maven-plugin</artifactId>
+                    <version>2.1.5</version>
+                    <configuration>
+                        <defaultUsername>${rpm.user.name}</defaultUsername>
+                        <defaultGroupname>${rpm.user.name}</defaultGroupname>
+                        <defaultFilemode>755</defaultFilemode>
+                        <group>Applications/Java</group>
+                        <targetOS>linux</targetOS>
+                        <needarch>noarch</needarch>
+                        <name>${rpm.user.name}-${project.artifactId}</name>
+                        <mappings>
+                            <mapping>
+                                <username>${rpm.user.name}</username>
+                                <groupname>${rpm.user.name}</groupname>
+                                <directory>
+                                    ${base.path}/${rpm.user.name}/${rpm.user.name}-${project.artifactId}-${project.version}
+                                </directory>
+                                <sources>
+                                    <source>
+                                        <location>target/${project.artifactId}</location>
+                                    </source>
+                                    <softlinkSource>
+                                        <destination>logs</destination>
+                                        <location>${logs.directory}</location>
+                                    </softlinkSource>
+                                    <softlinkSource>
+                                        <destination>pid</destination>
+                                        <location>${pid.directory}</location>
+                                    </softlinkSource>
+                                    <softlinkSource>
+                                        <destination>tmp</destination>
+                                        <location>${tmp.directory}</location>
+                                    </softlinkSource>
+                                    <softlinkSource>
+                                        <destination>conf</destination>
+                                        <location>${etc.directory}</location>
+                                    </softlinkSource>
+                                </sources>
+                            </mapping>
+                            <mapping>
+                                <username>${rpm.user.name}</username>
+                                <groupname>${rpm.user.name}</groupname>
+                                <directory>/etc/init.d</directory>
+                                <directoryIncluded>false</directoryIncluded>
+                                <sources>
+                                    <source>
+                                        <destination>${rpm.user.name}-${project.artifactId}</destination>
+                                        <location>target/rpm-scripts/service.sh</location>
+                                    </source>
+                                </sources>
+                            </mapping>
+                            <mapping>
+                                <username>${rpm.user.name}</username>
+                                <groupname>${rpm.user.name}</groupname>
+                                <directory>/etc/rc.d/init.d</directory>
+                                <directoryIncluded>false</directoryIncluded>
+                                <sources>
+                                    <source>
+                                        <destination>${rpm.user.name}-${project.artifactId}</destination>
+                                        <location>target/rpm-scripts/service.sh</location>
+                                    </source>
+                                </sources>
+                            </mapping>
+                        </mappings>
+                        <preinstallScriptlet>
+                            <scriptFile>target/rpm-scripts/preinstall.sh</scriptFile>
+                        </preinstallScriptlet>
+                        <postinstallScriptlet>
+                            <scriptFile>target/rpm-scripts/postinstall.sh</scriptFile>
+                        </postinstallScriptlet>
+                        <preremoveScriptlet>
+                            <scriptFile>target/rpm-scripts/preremove.sh</scriptFile>
+                        </preremoveScriptlet>
+                        <postremoveScriptlet>
+                            <scriptFile>target/rpm-scripts/postremove.sh</scriptFile>
+                        </postremoveScriptlet>
+                        <requires>
+                            <require>jdk</require>
+                            <require>subversion</require>
+                        </requires>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>attached-rpm</goal>
+                            </goals>
+                            <phase>install</phase>
+                        </execution>
+                    </executions>
+                </plugin>
                 <plugin>
                     <artifactId>kotlin-maven-plugin</artifactId>
                     <groupId>org.jetbrains.kotlin</groupId>
@@ -220,6 +351,20 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>2.1.2</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
     <modules>
@@ -229,5 +374,6 @@
         <module>domain</module>
         <module>quartz</module>
         <module>gridfs</module>
+        <module>logging</module>
     </modules>
 </project>

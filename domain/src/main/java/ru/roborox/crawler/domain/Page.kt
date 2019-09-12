@@ -14,18 +14,21 @@ enum class Status {
     LOADING,
     SKIPPED,
     SUCCESS,
-    FAILURE
+    FAILURE,
+    SCHEDULED
 }
 
 @Document(collection = "page")
 @CompoundIndexes(
-    CompoundIndex(def = "{loaderClass: 1, taskId: 1}", unique = true, background = true)
+    CompoundIndex(def = "{loaderClass: 1, taskId: 1}", unique = true, background = true),
+    CompoundIndex(def = "{loaderClass: 1, nextStartDate: 1}", background = true)
 )
 data class Page(
     val loaderClass: String,
     val taskId: String,
     val status: Status,
-    val lastLoadAttempt: Date,
+    val lastLoadAttempt: Date? = null,
+    val nextStartDate: Date? = null,
     val lastLoadDate: Date? = null,
     @LastModifiedDate
     val lastUpdate: Date? = null,

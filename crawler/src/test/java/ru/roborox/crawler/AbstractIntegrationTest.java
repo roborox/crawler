@@ -1,5 +1,7 @@
 package ru.roborox.crawler;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.core.ReactiveMongoOperations;
 import org.springframework.test.context.ContextConfiguration;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -9,6 +11,9 @@ import ru.roborox.crawler.quartz.QuartzConfiguration;
 
 @ContextConfiguration(classes = {QuartzConfiguration.class, MockConfiguration.class})
 public class AbstractIntegrationTest extends ru.roborox.crawler.test.AbstractIntegrationTest {
+
+    @Autowired
+    ReactiveMongoOperations mongo;
 
     @BeforeClass
     @Override

@@ -1,5 +1,7 @@
 package ru.roborox.crawler
 
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
@@ -10,6 +12,8 @@ import ru.roborox.crawler.domain.PageLog
 import ru.roborox.crawler.domain.Status
 import ru.roborox.crawler.persist.PageLogRepository
 import ru.roborox.crawler.persist.PageRepository
+import ru.roborox.logging.reactive.LoggingUtils
+import ru.roborox.logging.reactive.ReactiveLoggerContext
 import java.util.*
 
 @Service
@@ -18,24 +22,27 @@ class Crawler(
     private val pageLogRepository: PageLogRepository,
     private val taskScheduler: TaskScheduler
 ) {
-    fun <P : HasTaskId> crawl(params: P, loader: Loader<P>): Mono<Void> {
-        return markLoading(loader.javaClass.name, params.toTaskId())
-            .flatMap { page ->
-                load(page, params, loader)
-            }
-            .then()
+    fun crawl(taskId: String, loader: Loader): Mono<Void> {
+        return LoggingUtils.withMarker { marker ->
+            logger.info(marker, "crawl ${loader.javaClass.name} $taskId")
+            markLoading(loader.javaClass.name, taskId)
+                .flatMap { page ->
+                    load(page, loader)
+                }
+                .then()
+        }.subscriberContext { ReactiveLoggerContext.add(it, mapOf("taskId" to taskId, "loaderClass" to loader.javaClass.name)) }
     }
 
-    private fun <P : HasTaskId> load(page: Page, params: P, loader: Loader<P>): Mono<Void> {
+    private fun load(page: Page, loader: Loader): Mono<Void> {
         return pageLogRepository.save(PageLog(page.id, Status.LOADING))
             .flatMap { log ->
-                loader.load(page, params)
+                loader.load(page)
                     .flatMap { scheduleTasks(it) }
-                    .onErrorResume { LoadResult.ErrorResult(it).toMono() }
+                    .onErrorResume { LoadResult.ErrorResult(page, it).toMono() }
                     .flatMap { result ->
                         Mono.`when`(
-                            pageRepository.save(result.updatePage(page)),
-                            pageLogRepository.save(result.updateLog(log))
+                            result.updatePage(page).flatMap { pageRepository.save(it) },
+                            result.updateLog(log).flatMap { pageLogRepository.save(it) }
                         )
                     }
             }
@@ -60,5 +67,9 @@ class Crawler(
         return pageRepository.findByLoaderClassAndTaskId(loaderClass, taskId)
             .flatMap { pageRepository.save(it.copy(status = Status.LOADING, lastLoadAttempt = Date())) }
             .switchIfEmpty { pageRepository.save(Page(loaderClass, taskId, status = Status.LOADING, lastLoadAttempt = Date())) }
+    }
+
+    companion object {
+        val logger: Logger = LoggerFactory.getLogger(Crawler::class.java)
     }
 }

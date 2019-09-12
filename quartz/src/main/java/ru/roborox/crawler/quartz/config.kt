@@ -16,6 +16,8 @@ class QuartzConfiguration {
     private lateinit var mongoDatabase: String
     @Value("\${quartzThreadCount:1}")
     private lateinit var threadCount: String
+    @Value("\${quartzWriteTimeout:20000}")
+    private lateinit var writeTimeout: String
 
     @Bean
     fun quartzShedulerFactory(applicationContext: ApplicationContext): SchedulerFactoryBean {
@@ -27,6 +29,8 @@ class QuartzConfiguration {
         props["org.quartz.jobStore.dbName"] = mongoDatabase
         props["org.quartz.threadPool.threadCount"] = threadCount
         props["org.quartz.jobStore.collectionPrefix"] = "quartz"
+        props["org.quartz.jobStore.jobDataAsBase64"] = "false"
+        props["org.quartz.jobStore.mongoOptionWriteConcernTimeoutMillis"] = writeTimeout
         bean.setQuartzProperties(props)
         bean.setJobFactory(SpringBeanJobFactory())
         bean.isAutoStartup = true

@@ -1,7 +1,10 @@
 package ru.roborox.crawler.http
 
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.core.io.buffer.DataBuffer
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType.APPLICATION_PDF
 import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
@@ -12,68 +15,143 @@ import org.springframework.web.reactive.function.client.bodyToFlux
 import org.springframework.web.reactive.function.client.bodyToMono
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.core.publisher.switchIfEmpty
 import reactor.core.publisher.toMono
 import ru.roborox.crawler.LoadResult
 import ru.roborox.crawler.domain.Page
-import ru.roborox.crawler.kotlin.toMuliValueMap
+import ru.roborox.crawler.domain.Raw
+import ru.roborox.crawler.persist.RawRepository
+import ru.roborox.logging.reactive.LoggingUtils
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 
 interface HttpClient {
-    fun get(url: String, cookie: MultiValueMap<String, String> = LinkedMultiValueMap()): Mono<HttpResponse<String>>
-    fun getBytes(url: String): Flux<DataBuffer>
+    fun get(url: String, cookie: MultiValueMap<String, String> = LinkedMultiValueMap(), clients: WebClients = DefaultWebClients, handleRedirect: Boolean = false, useRaw: Boolean = false): Mono<HttpResponse<String?>>
+    fun getBytes(url: String, cookie: MultiValueMap<String, String> = LinkedMultiValueMap(), clients: WebClients = DefaultWebClients): Mono<HttpResponse<Flux<DataBuffer>>>
 }
 
-//todo save load logs
+private val client = WebClient.builder()
+    .clientConnector(WebClientHelper.createConnector(10000, 10000))
+    .defaultHeaders {
+        it.add(HttpHeaders.USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36")
+        it.add(HttpHeaders.ACCEPT, "*/*")
+        it.add(HttpHeaders.CACHE_CONTROL, "no-cache")
+        it.add(HttpHeaders.CONNECTION, "keep-alive")
+    }
+    .build()
+private val clientAndProxy = WebClientAndProxy(client)
+
+object DefaultWebClients : WebClients {
+    override fun <T> useResource(f: (WebClientAndProxy) -> Mono<T>): Mono<T> = f(clientAndProxy)
+}
+
 @Component
-class HttpClientImpl : HttpClient {
-    private val client = WebClient.builder()
-        .clientConnector(WebClientHelper.createConnector(10000, 10000))
-        .defaultHeaders {
-            it.add(HttpHeaders.USER_AGENT,"PostmanRuntime/7.15.2")
-            it.add(HttpHeaders.ACCEPT, "*/*")
-            it.add(HttpHeaders.CACHE_CONTROL, "no-cache")
-            it.add(HttpHeaders.CONNECTION, "keep-alive")
-        }
-        .build()
-
-    override fun get(url: String, cookie: MultiValueMap<String, String>): Mono<HttpResponse<String>> {
-        return client.get()
-            .uri(url)
-            .cookies { cookies -> cookies.addAll(cookie) }
-            .exchange()
-            .map { resp ->
-                HttpResponse(resp.headers()) {
-                    resp.bodyToMono<String>()
-                }
+class HttpClientImpl(private val rawRepository: RawRepository) : HttpClient {
+    override fun get(url: String, cookie: MultiValueMap<String, String>, clients: WebClients, handleRedirect: Boolean, useRaw: Boolean): Mono<HttpResponse<String?>> {
+        return if (useRaw) {
+            rawRepository.findById(url).map {
+                logger.info("get task using raw")
+                HttpResponse<String?>(HttpStatus.OK, null, it.content)
+            }.switchIfEmpty {
+                logger.info("get task failed. using http")
+                getWithUrl(clients, url, cookie, handleRedirect)
             }
+        } else {
+            getWithUrl(clients, url, cookie, handleRedirect)
+        }
     }
 
-    override fun getBytes(url: String): Flux<DataBuffer> {
-        return client.get()
-            .uri(url)
-            .accept(APPLICATION_PDF)
-            .exchange()
-            .flatMapMany {
-                it.bodyToFlux<DataBuffer>()
+    private fun getWithUrl(clients: WebClients, url: String, cookie: MultiValueMap<String, String>, handleRedirect: Boolean): Mono<HttpResponse<String?>> {
+        return LoggingUtils.withMarker { marker ->
+            clients.useResource { clientAndProxy ->
+                logger.info(marker, "get $url using ${clientAndProxy.proxy}")
+                clientAndProxy.client.get()
+                    .uri(url)
+                    .cookies { cookies -> cookies.addAll(cookie) }
+                    .exchange()
+                    .flatMap { resp ->
+                        resp.bodyToMono<String>()
+                            .toOptional()
+                            .map {
+                                HttpResponse<String?>(resp.statusCode(), resp.headers(), it.orElse(null))
+                            }
+                    }
+                    .flatMap { resp ->
+                        if (handleRedirect && resp.status.is3xxRedirection) {
+                            val newUrl = resp.headers?.getLocation(url)
+                            logger.info(marker, "handling redirect from $url to $newUrl")
+                            clientAndProxy.client.get()
+                                .uri(newUrl!!)
+                                .cookies { cookies -> cookies.addAll(cookie) }
+                                .exchange()
+                                .flatMap { secondResp ->
+                                    secondResp.bodyToMono<String>()
+                                        .toOptional()
+                                        .map {
+                                            HttpResponse<String?>(secondResp.statusCode(), secondResp.headers(), it.orElse(null))
+                                        }
+                                }
+                        } else {
+                            resp.toMono()
+                        }
+                    }.flatMap {
+                        if (it.body != null)
+                            rawRepository.save(Raw(id = url, content = it.body))
+                                .thenReturn(it)
+                        else
+                            it.toMono()
+                    }
             }
+        }
+    }
+
+    override fun getBytes(url: String, cookie: MultiValueMap<String, String>, clients: WebClients): Mono<HttpResponse<Flux<DataBuffer>>> {
+        return LoggingUtils.withMarker { marker ->
+            clients.useResource { clientAndProxy ->
+                logger.info(marker, "get $url using ${clientAndProxy.proxy} client:#${clientAndProxy.client.hashCode()}")
+                clientAndProxy.client.get()
+                    .uri(url)
+                    .accept(APPLICATION_PDF)
+                    .exchange()
+                    .map { resp ->
+                        HttpResponse(resp.statusCode(), resp.headers(), resp.bodyToFlux<DataBuffer>())
+                    }
+            }
+        }
+    }
+
+    companion object {
+        val logger: Logger = LoggerFactory.getLogger(HttpClientImpl::class.java)
     }
 }
 
-class HttpResponse<T>(
-    val headers: ClientResponse.Headers,
-    val body: () -> Mono<T>
-)
+data class HttpResponse<T>(
+    val status: HttpStatus,
+    val headers: ClientResponse.Headers?,
+    val body: T
+) {
+    override fun toString(): String {
+        return "HttpResponse(status=$status, headers=$headers)"
+    }
+}
 
-fun <T> Mono<HttpResponse<T>>.ifChanged(page: Page, loader: (T) -> Mono<LoadResult>): Mono<LoadResult> {
-    return this.flatMap {
-        if (page.lastLoadDate == null || page.tryLoad(it.headers.parseLastModifiedDate())) {
-            it.body()
-                .flatMap { body -> loader(body) }
-        } else {
-            LoadResult.SkippedResult.toMono()
+fun <T> Mono<HttpResponse<T>>.ifChanged(page: Page, loader: (T?) -> Mono<LoadResult>): Mono<LoadResult> {
+    return LoggingUtils.withMarker { marker ->
+        this.flatMap {
+            if (page.lastLoadDate == null || page.tryLoad(it.headers?.parseLastModifiedDate())) {
+                Http.logger.info(marker, "page ${page.taskId} changed. continuing")
+                loader(it.body)
+            } else {
+                Http.logger.info(marker, "page ${page.taskId} not changed. ignoring")
+                LoadResult.SkippedResult.toMono()
+            }
         }
     }
+}
+
+object Http {
+    val logger: Logger = LoggerFactory.getLogger(Http::class.java)
 }
 
 private fun Page.tryLoad(lastModifiedDate: Date?): Boolean {
@@ -85,7 +163,24 @@ private fun ClientResponse.Headers.parseLastModifiedDate(): Date? {
     return if (headers.isEmpty()) {
         null
     } else {
-        val format = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
+        val format = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US)
         format.parse(headers.first())
     }
+}
+
+fun ClientResponse.Headers.getLocation(original: String): String? {
+    return this.header("Location").firstOrNull()
+        ?.let {
+            if (it.startsWith("http")) {
+                it
+            } else {
+                URL(URL(original), it).toString()
+            }
+        }
+}
+
+fun <T> Mono<T>.toOptional(): Mono<Optional<T>> {
+    return this
+        .map { Optional.of(it) }
+        .switchIfEmpty { Optional.empty<T>().toMono() }
 }

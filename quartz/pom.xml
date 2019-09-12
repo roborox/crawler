@@ -11,6 +11,13 @@
 
     <artifactId>quartz</artifactId>
 
+    <repositories>
+        <repository>
+            <id>michaelklishin</id>
+            <url>https://dl.bintray.com/michaelklishin/maven/</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework</groupId>

@@ -13,8 +13,18 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20180813</version>
+        </dependency>
+        <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>persist</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>logging</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -49,5 +59,4 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
 </project>

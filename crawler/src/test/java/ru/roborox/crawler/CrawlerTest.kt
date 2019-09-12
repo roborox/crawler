@@ -36,7 +36,7 @@ class CrawlerTest {
         `when`(pageLogRepository.save(Matchers.any(PageLog::class.java)))
             .thenAnswer { (it.arguments[0] as PageLog).copy(id = logId).toMono() }
 
-        crawler.crawl(id.toParam(), TestLoader(LoadResult.SuccessResult(listOf()))).block()
+        crawler.crawl(id, TestLoader(LoadResult.SuccessResult(listOf()))).block()
 
         verify(pageRepository).save(argumentThat {
             it.status == Status.LOADING
@@ -65,7 +65,7 @@ class CrawlerTest {
         `when`(pageLogRepository.save(Matchers.any(PageLog::class.java)))
             .thenAnswer { (it.arguments[0] as PageLog).copy(id = logId).toMono() }
 
-        crawler.crawl(id.toParam(), TestLoader(LoadResult.SuccessResult(listOf()))).block()
+        crawler.crawl(id, TestLoader(LoadResult.SuccessResult(listOf()))).block()
 
         verify(pageRepository).save(argumentThat {
             it.status == Status.LOADING
@@ -94,10 +94,10 @@ class CrawlerTest {
         `when`(pageLogRepository.save(Matchers.any(PageLog::class.java)))
             .thenAnswer { (it.arguments[0] as PageLog).copy(id = logId).toMono() }
         val nextId = randomAlphabetic(10)
-        `when`(taskScheduler.submit(LoaderTask(nextId.toParam(), TestLoader::class.java)))
+        `when`(taskScheduler.submit(LoaderTask(nextId, TestLoader::class.java)))
             .thenReturn(Mono.empty())
 
-        crawler.crawl(id.toParam(), TestLoader(LoadResult.SuccessResult(listOf(LoaderTask(nextId.toParam(), TestLoader::class.java))))).block()
+        crawler.crawl(id, TestLoader(LoadResult.SuccessResult(listOf(LoaderTask(nextId, TestLoader::class.java))))).block()
 
         verify(pageRepository).save(argumentThat {
             it.status == Status.LOADING
@@ -112,7 +112,7 @@ class CrawlerTest {
             it.status == Status.SUCCESS && it.id == logId
         })
         verify(pageRepository).findByLoaderClassAndTaskId(TestLoader::class.java.name, id)
-        verify(taskScheduler).submit(LoaderTask(nextId.toParam(), TestLoader::class.java))
+        verify(taskScheduler).submit(LoaderTask(nextId, TestLoader::class.java))
     }
 
     @BeforeMethod
@@ -126,6 +126,6 @@ class CrawlerTest {
     }
 }
 
-class TestLoader(private val loadResult: LoadResult) : Loader<StringParam> {
-    override fun load(page: Page, params: StringParam): Mono<LoadResult> = loadResult.toMono()
+class TestLoader(private val loadResult: LoadResult) : Loader {
+    override fun load(page: Page): Mono<LoadResult> = loadResult.toMono()
 }

@@ -17,6 +17,6 @@ import ru.roborox.crawler.quartz.EnableRoboroxQuartz
 )
 class CrawlerConfiguration
 
-@EnableRoboroxMongo(repositoriesPackage = [Persist::class])
+@EnableRoboroxMongo(repositoriesPackage = [PersistConfiguration::class])
 @IncludePersistProperties
 class PersistConfiguration
