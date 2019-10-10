@@ -7,6 +7,7 @@ import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.publisher.switchIfEmpty
 import reactor.core.publisher.toMono
+import ru.roborox.crawler.domain.LoaderTask
 import ru.roborox.crawler.domain.Page
 import ru.roborox.crawler.domain.PageLog
 import ru.roborox.crawler.domain.Status
@@ -22,10 +23,10 @@ class Crawler(
     private val pageLogRepository: PageLogRepository,
     private val taskScheduler: TaskScheduler
 ) {
-    fun crawl(taskId: String, loader: Loader): Mono<Void> {
+    fun crawl(parent: LoaderTask?, taskId: String, loader: Loader): Mono<Void> {
         return LoggingUtils.withMarker { marker ->
             logger.info(marker, "crawl ${loader.javaClass.name} $taskId")
-            markLoading(loader.javaClass.name, taskId)
+            markLoading(parent, loader.javaClass.name, taskId)
                 .flatMap { page ->
                     load(page, loader)
                 }
@@ -34,10 +35,11 @@ class Crawler(
     }
 
     private fun load(page: Page, loader: Loader): Mono<Void> {
+        val thisTask = LoaderTask(page.taskId, loader.javaClass.name)
         return pageLogRepository.save(PageLog(page.id, Status.LOADING))
             .flatMap { log ->
                 loader.load(page)
-                    .flatMap { scheduleTasks(it) }
+                    .flatMap { scheduleNext(thisTask, it) }
                     .onErrorResume { LoadResult.ErrorResult(page, it).toMono() }
                     .flatMap { result ->
                         Mono.`when`(
@@ -48,25 +50,34 @@ class Crawler(
             }
     }
 
-    private fun scheduleTasks(result: LoadResult): Mono<LoadResult> {
+    private fun scheduleNext(parent: LoaderTask, result: LoadResult): Mono<LoadResult> {
         return if (result is LoadResult.SuccessResult) {
-            submitAll(result)
+            submitAll(parent, result)
                 .thenReturn(result)
         } else {
             result.toMono()
         }
     }
 
-    private fun submitAll(result: LoadResult.SuccessResult): Mono<Void> {
+    private fun submitAll(parent: LoaderTask, result: LoadResult.SuccessResult): Mono<Void> {
         return Flux.fromIterable(result.tasks)
-            .flatMap { taskScheduler.submit(it) }
+            .flatMap { task ->
+                createOrUpdatePage(parent, task)
+                    .flatMap { taskScheduler.submit(task) }
+            }
             .then()
     }
 
-    private fun markLoading(loaderClass: String, taskId: String): Mono<Page> {
+    private fun createOrUpdatePage(parent: LoaderTask, task: LoaderTask): Mono<Page> {
+        val (taskId, loaderClass) = task
+        return pageRepository.findByLoaderClassAndTaskId(loaderClass, taskId)
+            .switchIfEmpty { pageRepository.save(Page(loaderClass, taskId, parent, status = Status.NEW)) }
+    }
+
+    private fun markLoading(parent: LoaderTask?, loaderClass: String, taskId: String): Mono<Page> {
         return pageRepository.findByLoaderClassAndTaskId(loaderClass, taskId)
             .flatMap { pageRepository.save(it.copy(status = Status.LOADING, lastLoadAttempt = Date())) }
-            .switchIfEmpty { pageRepository.save(Page(loaderClass, taskId, status = Status.LOADING, lastLoadAttempt = Date())) }
+            .switchIfEmpty { pageRepository.save(Page(loaderClass, taskId, parent, status = Status.LOADING, lastLoadAttempt = Date())) }
     }
 
     companion object {

@@ -4,6 +4,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import reactor.core.publisher.Mono
 import reactor.core.publisher.toMono
+import ru.roborox.crawler.domain.LoaderTask
 import ru.roborox.crawler.domain.Page
 import ru.roborox.crawler.domain.PageLog
 import ru.roborox.crawler.domain.Status
@@ -53,8 +54,3 @@ sealed class LoadResult {
         val logger: Logger = LoggerFactory.getLogger(LoadResult::class.java)
     }
 }
-
-data class LoaderTask(
-    val taskId: String,
-    val loaderClass: Class<out Loader>
-)

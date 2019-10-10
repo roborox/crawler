@@ -11,11 +11,12 @@ import org.springframework.data.mongodb.core.mapping.Document
 import java.util.*
 
 enum class Status {
+    NEW,
+    SCHEDULED,
     LOADING,
     SKIPPED,
     SUCCESS,
-    FAILURE,
-    SCHEDULED
+    FAILURE
 }
 
 @Document(collection = "page")
@@ -26,6 +27,7 @@ enum class Status {
 data class Page(
     val loaderClass: String,
     val taskId: String,
+    val parent: LoaderTask?,
     val status: Status,
     val lastLoadAttempt: Date? = null,
     val nextStartDate: Date? = null,
@@ -40,3 +42,7 @@ data class Page(
     val version: Long? = null
 )
 
+data class LoaderTask(
+    val taskId: String,
+    val loaderClass: String
+)

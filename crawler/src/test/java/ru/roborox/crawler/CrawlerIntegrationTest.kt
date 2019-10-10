@@ -1,5 +1,6 @@
 package ru.roborox.crawler
 
+import junit.framework.Assert.assertEquals
 import junit.framework.Assert.assertTrue
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.mongodb.core.count
@@ -28,7 +29,7 @@ class CrawlerIntegrationTest : AbstractIntegrationTest() {
 
     @Test(enabled = false)
     fun crawlTestWithoutMinRate() {
-        crawler.crawl("ROOT", testCrawlWithoutMinRate).block()
+        crawler.crawl(null, "ROOT", testCrawlWithoutMinRate).block()
         Thread.sleep(1000)
         val count = mongo.count<Page>(Query(Criteria.where("status").`is`("SUCCESS")
             .and("loaderClass").`is`(AfterTestCrawlZero::class.java.name))).block()!!
@@ -38,7 +39,7 @@ class CrawlerIntegrationTest : AbstractIntegrationTest() {
 
     @Test
     fun crawlTestWithMinRate() {
-        crawler.crawl("ROOT", testCrawlWithMinRate).block()
+        crawler.crawl(null, "ROOT", testCrawlWithMinRate).block()
         Thread.sleep(1000)
         val countWithMinRate = mongo.count<Page>(Query(Criteria.where("status").`is`("SUCCESS")
             .and("loaderClass").`is`(AfterTestCrawlWithMinRate::class.java.name))).block()!!
@@ -48,10 +49,10 @@ class CrawlerIntegrationTest : AbstractIntegrationTest() {
 
     @Test
     fun crawlTestReloadable() {
-        crawler.crawl("ROOT", testCrawlReloadable).block()
+        crawler.crawl(null, "ROOT", testCrawlReloadable).block()
         Thread.sleep(1000)
         val page1 = mongo.find<Page>(Query(Criteria.where("loaderClass").`is`(AfterTestCrawlReloadable::class.java.name))).blockFirst()!!
-        crawler.crawl("ROOT", testCrawlReloadable).block()
+        crawler.crawl(null, "ROOT", testCrawlReloadable).block()
         Thread.sleep(1000)
         val page2 = mongo.find<Page>(Query(Criteria.where("loaderClass").`is`(AfterTestCrawlReloadable::class.java.name))).blockFirst()!!
         logger.info("page1: $page1")
@@ -61,16 +62,16 @@ class CrawlerIntegrationTest : AbstractIntegrationTest() {
 
     @Test
     fun crawlTestNeverReload() {
-        crawler.crawl("ROOT", testCrawlNeverReload).block()
+        crawler.crawl(null, "ROOT", testCrawlNeverReload).block()
         Thread.sleep(1000)
         val page1 = mongo.find<Page>(Query(Criteria.where("loaderClass").`is`(AfterTestCrawlNeverReload::class.java.name))).blockFirst()!!
-        crawler.crawl("ROOT", testCrawlNeverReload).block()
+        crawler.crawl(null, "ROOT", testCrawlNeverReload).block()
         Thread.sleep(1000)
         val page2 = mongo.find<Page>(Query(Criteria.where("loaderClass").`is`(AfterTestCrawlNeverReload::class.java.name))).blockFirst()!!
 
         logger.info("page1: $page1")
         logger.info("page2: $page2")
-        assertTrue(page1.lastUpdate == page2.lastUpdate)
+        assertEquals(page1.lastUpdate, page2.lastUpdate)
     }
 
 }

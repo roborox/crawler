@@ -9,6 +9,7 @@ import org.testng.annotations.BeforeMethod
 import org.testng.annotations.Test
 import reactor.core.publisher.Mono
 import reactor.core.publisher.toMono
+import ru.roborox.crawler.domain.LoaderTask
 import ru.roborox.crawler.domain.Page
 import ru.roborox.crawler.domain.PageLog
 import ru.roborox.crawler.domain.Status
@@ -36,7 +37,7 @@ class CrawlerTest {
         `when`(pageLogRepository.save(Matchers.any(PageLog::class.java)))
             .thenAnswer { (it.arguments[0] as PageLog).copy(id = logId).toMono() }
 
-        crawler.crawl(id, TestLoader(LoadResult.SuccessResult(listOf()))).block()
+        crawler.crawl(null, id, TestLoader(LoadResult.SuccessResult(listOf()))).block()
 
         verify(pageRepository).save(argumentThat {
             it.status == Status.LOADING
@@ -59,13 +60,13 @@ class CrawlerTest {
         val logId = ObjectId.get()
 
         `when`(pageRepository.findByLoaderClassAndTaskId(TestLoader::class.java.name, id))
-            .thenReturn(Mono.just(Page(TestLoader::class.java.name, id, Status.FAILURE, Date(), id = pageId)))
+            .thenReturn(Mono.just(Page(TestLoader::class.java.name, id, LoaderTask(id, TestLoader::class.java.name), Status.FAILURE, Date(), id = pageId)))
         `when`(pageRepository.save(Matchers.any(Page::class.java)))
             .thenAnswer { (it.arguments[0] as Page).toMono() }
         `when`(pageLogRepository.save(Matchers.any(PageLog::class.java)))
             .thenAnswer { (it.arguments[0] as PageLog).copy(id = logId).toMono() }
 
-        crawler.crawl(id, TestLoader(LoadResult.SuccessResult(listOf()))).block()
+        crawler.crawl(null, id, TestLoader(LoadResult.SuccessResult(listOf()))).block()
 
         verify(pageRepository).save(argumentThat {
             it.status == Status.LOADING
@@ -87,32 +88,29 @@ class CrawlerTest {
         val pageId = ObjectId.get()
         val logId = ObjectId.get()
 
-        `when`(pageRepository.findByLoaderClassAndTaskId(TestLoader::class.java.name, id))
+        val className = TestLoader::class.java.name
+        `when`(pageRepository.findByLoaderClassAndTaskId(className, id))
             .thenReturn(Mono.empty())
         `when`(pageRepository.save(Matchers.any(Page::class.java)))
             .thenAnswer { (it.arguments[0] as Page).copy(id = pageId).toMono() }
         `when`(pageLogRepository.save(Matchers.any(PageLog::class.java)))
             .thenAnswer { (it.arguments[0] as PageLog).copy(id = logId).toMono() }
         val nextId = randomAlphabetic(10)
-        `when`(taskScheduler.submit(LoaderTask(nextId, TestLoader::class.java)))
+        `when`(taskScheduler.submit(LoaderTask(nextId, className)))
+            .thenReturn(Mono.empty())
+        `when`(pageRepository.findByLoaderClassAndTaskId(className, nextId))
             .thenReturn(Mono.empty())
 
-        crawler.crawl(id, TestLoader(LoadResult.SuccessResult(listOf(LoaderTask(nextId, TestLoader::class.java))))).block()
+        crawler.crawl(null, id, TestLoader(LoadResult.SuccessResult(listOf(LoaderTask(nextId, className))))).block()
 
-        verify(pageRepository).save(argumentThat {
-            it.status == Status.LOADING
-        })
-        verify(pageRepository).save(argumentThat {
-            it.status == Status.SUCCESS && it.id == pageId
-        })
-        verify(pageLogRepository).save(argumentThat {
-            it.status == Status.LOADING
-        })
-        verify(pageLogRepository).save(argumentThat {
-            it.status == Status.SUCCESS && it.id == logId
-        })
-        verify(pageRepository).findByLoaderClassAndTaskId(TestLoader::class.java.name, id)
-        verify(taskScheduler).submit(LoaderTask(nextId, TestLoader::class.java))
+        verify(pageRepository).save(argumentThat { it.status == Status.LOADING })
+        verify(pageRepository).save(argumentThat { it.status == Status.NEW && it.taskId == nextId })
+        verify(pageRepository).save(argumentThat { it.status == Status.SUCCESS && it.id == pageId })
+        verify(pageLogRepository).save(argumentThat { it.status == Status.LOADING })
+        verify(pageLogRepository).save(argumentThat { it.status == Status.SUCCESS && it.id == logId })
+        verify(pageRepository).findByLoaderClassAndTaskId(className, id)
+        verify(taskScheduler).submit(LoaderTask(nextId, className))
+        verify(pageRepository).findByLoaderClassAndTaskId(className, nextId)
     }
 
     @BeforeMethod

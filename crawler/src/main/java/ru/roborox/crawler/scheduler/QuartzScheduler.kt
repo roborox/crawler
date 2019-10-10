@@ -8,13 +8,11 @@ import org.springframework.context.ApplicationContext
 import org.springframework.context.event.ContextRefreshedEvent
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
-import reactor.core.publisher.switchIfEmpty
-import reactor.core.publisher.toMono
 import ru.roborox.crawler.Crawler
 import ru.roborox.crawler.Loader
-import ru.roborox.crawler.LoaderTask
 import ru.roborox.crawler.TaskScheduler
 import ru.roborox.crawler.anotation.AnnotatedBeanFinder
+import ru.roborox.crawler.domain.LoaderTask
 import ru.roborox.crawler.domain.Page
 import ru.roborox.crawler.domain.ReloadType
 import ru.roborox.crawler.domain.Status
@@ -36,18 +34,13 @@ class QuartzScheduler(
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
     override fun submit(task: LoaderTask): Mono<Void> {
-        return task.toMono()
-            .flatMap { t ->
-                createOrUpdatePage(t.loaderClass.name, t.taskId)
-            }.flatMap {
-                Callable { schedule(task.loaderClass) }.blockingToMono()
-            }.then()
-    }
-
-    private fun createOrUpdatePage(loaderClass: String, taskId: String): Mono<Page> {
-        return pageRepository.findByLoaderClassAndTaskId(loaderClass, taskId)
-            .switchIfEmpty { pageRepository.save(Page(loaderClass, taskId, status = Status.SCHEDULED, nextStartDate = Date())) }
+        val schedule = Callable { schedule(Class.forName(task.loaderClass) as Class<out Loader>) }.blockingToMono().then()
+        return pageRepository.findByLoaderClassAndTaskId(task.loaderClass, task.taskId)
+            .map { if (it.status == Status.NEW) it.copy(status = Status.SCHEDULED, nextStartDate = Date()) else it }
+            .flatMap { pageRepository.save(it) }
+            .then(schedule)
     }
 
     fun reschedule(clazz: Class<out Loader>, page: Page) {
@@ -155,7 +148,7 @@ class QuartzJob(
             if (page != null) {
                 MDC.put("taskId", page.taskId)
                 quartzScheduler.reschedule(clazz, page)
-                crawler.crawl(page.taskId, bean).subscribe(
+                crawler.crawl(page.parent, page.taskId, bean).subscribe(
                     {},
                     { logger.error("got exception while executing crawl", it) }
                 )
