@@ -2,16 +2,18 @@ package ru.roborox.crawler.gridfs.configuration;
 
 import com.mongodb.reactivestreams.client.MongoClient;
 import com.mongodb.reactivestreams.client.MongoClients;
-import com.mongodb.reactivestreams.client.MongoDatabase;
-import com.mongodb.reactivestreams.client.gridfs.GridFSBucket;
-import com.mongodb.reactivestreams.client.gridfs.GridFSBuckets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.data.mongodb.ReactiveMongoDatabaseFactory;
+import org.springframework.data.mongodb.core.SimpleReactiveMongoDatabaseFactory;
+import org.springframework.data.mongodb.core.convert.MappingMongoConverter;
+import org.springframework.data.mongodb.gridfs.ReactiveGridFsTemplate;
 
 @Configuration
 @ComponentScan(basePackageClasses = Package.class, excludeFilters = @ComponentScan.Filter(type = FilterType.ANNOTATION, value = Configuration.class))
@@ -22,21 +24,26 @@ public class GridFsConfiguration {
     private String mongoUrls;
     @Value("${filesMongoDatabase}")
     private String mongoDatabase;
-    @Value("${filesBucketName}")
+    @Value("${filesBucketName:fs}")
     private String bucketName;
+    @Autowired
+    private MappingMongoConverter mappingMongoConverter;
 
-    public MongoClient mongoClient() {
-        logger.info("creating gridfs mongoClient using {}", mongoUrls);
-        return MongoClients.create(String.format("mongodb://%s", mongoUrls));
-    }
-
-    public MongoDatabase mongoDatabase() {
-        logger.info("creating gridfs database {}", mongoDatabase);
-        return mongoClient().getDatabase(mongoDatabase);
+    public ReactiveMongoDatabaseFactory reactiveMongoDbFactory() {
+        return new SimpleReactiveMongoDatabaseFactory(reactiveMongoClient(), getDatabaseName());
     }
 
     @Bean
-    public GridFSBucket gridfsBucket() {
-        return GridFSBuckets.create(mongoDatabase(), bucketName);
+    public ReactiveGridFsTemplate reactiveGridFsTemplate() {
+        return new ReactiveGridFsTemplate(reactiveMongoDbFactory(), mappingMongoConverter, bucketName);
+    }
+
+    public MongoClient reactiveMongoClient() {
+        logger.info("creating mongoClient using {}", mongoUrls);
+        return MongoClients.create(String.format("mongodb://%s", mongoUrls));
+    }
+
+    protected String getDatabaseName() {
+        return mongoDatabase;
     }
 }

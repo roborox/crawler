@@ -11,7 +11,7 @@ import java.util.Arrays;
 import java.util.List;
 
 public class AsyncMongoHelper {
-    @Autowired
+    @Autowired(required = false)
     private MongoDatabase database;
 
     private final List<String> ignoreCollections = Arrays.asList(
@@ -20,9 +20,12 @@ public class AsyncMongoHelper {
     );
 
     public Flux<DeleteResult> cleanup() {
-        return Flux.from(database.listCollectionNames())
-            .filter(this::filterCollection)
-            .flatMap(this::cleanupCollection);
+        if (database != null)
+            return Flux.from(database.listCollectionNames())
+                .filter(this::filterCollection)
+                .flatMap(this::cleanupCollection);
+        else
+            return Flux.empty();
     }
 
     private boolean filterCollection(String name) {
@@ -30,6 +33,9 @@ public class AsyncMongoHelper {
     }
 
     public Mono<DeleteResult> cleanupCollection(String collectionName) {
-        return Mono.from(database.getCollection(collectionName).deleteMany(new Document()));
+        if (database != null)
+            return Mono.from(database.getCollection(collectionName).deleteMany(new Document()));
+        else
+            return Mono.empty();
     }
 }

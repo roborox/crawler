@@ -8,6 +8,7 @@ import org.springframework.context.ApplicationContext
 import org.springframework.context.event.ContextRefreshedEvent
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Mono
+import reactor.kotlin.core.publisher.toMono
 import ru.roborox.crawler.Crawler
 import ru.roborox.crawler.Loader
 import ru.roborox.crawler.TaskScheduler
@@ -17,6 +18,7 @@ import ru.roborox.crawler.domain.Page
 import ru.roborox.crawler.domain.ReloadType
 import ru.roborox.crawler.domain.Status
 import ru.roborox.crawler.persist.PageRepository
+import java.lang.Exception
 import java.util.*
 import java.util.concurrent.Callable
 
@@ -30,7 +32,7 @@ class QuartzScheduler(
     override fun onApplicationEvent(event: ContextRefreshedEvent) {
         super.onApplicationEvent(event)
         for (clazz in getAllLoaders()) {
-            schedule(clazz)
+            schedule(clazz, true)
         }
     }
 
@@ -38,8 +40,12 @@ class QuartzScheduler(
     override fun submit(task: LoaderTask): Mono<Void> {
         val schedule = Callable { schedule(Class.forName(task.loaderClass) as Class<out Loader>) }.blockingToMono().then()
         return pageRepository.findByLoaderClassAndTaskId(task.loaderClass, task.taskId)
-            .map { if (it.status == Status.NEW) it.copy(status = Status.SCHEDULED, nextStartDate = Date()) else it }
-            .flatMap { pageRepository.save(it) }
+            .flatMap {
+                if (it.status == Status.NEW)
+                    pageRepository.save(it.copy(status = Status.SCHEDULED, nextStartDate = Date()))
+                else
+                    it.toMono()
+            }
             .then(schedule)
     }
 
@@ -47,8 +53,11 @@ class QuartzScheduler(
         val config = getLoaderConfig(clazz)
         val reloadEvery = config.reloadEvery.toMillis(config.countReload)
         if (config.reloadType != ReloadType.NEVER && reloadEvery != 0L) {
-            pageRepository.save(page.copy(nextStartDate = Date(Date().time + reloadEvery))).block()
+            val nextStartDate = Date(Date().time + reloadEvery)
+            logger.info("setting nextStarDate to $nextStartDate")
+            pageRepository.save(page.copy(nextStartDate = nextStartDate)).block()
         } else {
+            logger.info("setting nextStarDate to null cause NEVER reload")
             pageRepository.save(page.copy(nextStartDate = null)).block()
         }
         schedule(clazz, true)
@@ -153,6 +162,8 @@ class QuartzJob(
                     { logger.error("got exception while executing crawl", it) }
                 )
             }
+        } catch (ex: Exception) {
+            logger.error("unable to execute QuartzJob", ex)
         } finally {
             MDC.remove("loaderClass")
             MDC.remove("taskId")

@@ -25,17 +25,18 @@
 
         <rpm.user.name>roborox</rpm.user.name>
 
-        <spring-data-mongodb.version>2.1.10.RELEASE</spring-data-mongodb.version>
-        <spring.version>5.1.9.RELEASE</spring.version>
-        <mongodb-driver.version>3.8.2</mongodb-driver.version>
-        <mongodb-driver-reactivestreams.version>1.9.2</mongodb-driver-reactivestreams.version>
+        <spring-data-mongodb.version>2.2.0.RELEASE</spring-data-mongodb.version>
+        <spring.version>5.2.0.RELEASE</spring.version>
+        <mongodb-driver.version>3.11.0</mongodb-driver.version>
+        <mongodb-driver-reactivestreams.version>1.12.0</mongodb-driver-reactivestreams.version>
         <quartz-mongodb.version>2.1.0</quartz-mongodb.version>
-        <reactor-netty.version>0.8.11.RELEASE</reactor-netty.version>
-        <jackson-databind.version>2.9.9.3</jackson-databind.version>
-        <jackson.version>2.9.9</jackson.version>
+        <reactor-netty.version>0.9.0.RELEASE</reactor-netty.version>
+        <jackson-databind.version>2.10.0</jackson-databind.version>
+        <jackson.version>2.10.0</jackson.version>
         <testng.version>6.9.6</testng.version>
         <slf4j.version>1.7.26</slf4j.version>
-        <reactor-core.version>3.2.12.RELEASE</reactor-core.version>
+        <reactor-core.version>3.3.0.RELEASE</reactor-core.version>
+        <reactor-kotlin-extensions.version>1.0.0.RELEASE</reactor-kotlin-extensions.version>
         <commons-lang3.version>3.5</commons-lang3.version>
         <mockito.version>1.9.0</mockito.version>
         <logback.version>1.2.3</logback.version>
@@ -48,6 +49,11 @@
                 <groupId>io.projectreactor</groupId>
                 <artifactId>reactor-core</artifactId>
                 <version>${reactor-core.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.projectreactor.kotlin</groupId>
+                <artifactId>reactor-kotlin-extensions</artifactId>
+                <version>${reactor-kotlin-extensions.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>
@@ -375,5 +381,7 @@
         <module>quartz</module>
         <module>gridfs</module>
         <module>logging</module>
+        <module>api</module>
+        <module>common</module>
     </modules>
 </project>

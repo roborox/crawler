@@ -1,6 +1,5 @@
 package ru.roborox.crawler.http
 
-import org.mockito.Mockito.mock
 import org.springframework.beans.factory.annotation.Autowired
 import org.testng.Assert.assertTrue
 import org.testng.Assert.fail
@@ -39,7 +38,7 @@ class ValidateTest : AbstractIntegrationTest() {
     fun validateSuccessWithRaw() {
         rawRepository.save(Raw(id = "some-error-url", content = "123 Not Found")).block()
         val client = HttpClientImpl(rawRepository)
-        client.get("https://roborox.org/some-error-url", useRaw = true)
+        client.get("https://roborox.org/some-error-url", rawUse = RawUse.USE_CACHED)
             .validateHtml(2) { it.contains("Not Found") }
             .block()
         assertTrue(rawRepository.findById("some-error-url").block()!!.content.equals("123 Not Found"))

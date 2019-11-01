@@ -2,11 +2,13 @@ package ru.roborox.crawler
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DuplicateKeyException
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
-import reactor.core.publisher.switchIfEmpty
-import reactor.core.publisher.toMono
+import reactor.kotlin.core.publisher.switchIfEmpty
+import reactor.kotlin.core.publisher.toMono
 import ru.roborox.crawler.domain.LoaderTask
 import ru.roborox.crawler.domain.Page
 import ru.roborox.crawler.domain.PageLog
@@ -71,7 +73,17 @@ class Crawler(
     private fun createOrUpdatePage(parent: LoaderTask, task: LoaderTask): Mono<Page> {
         val (taskId, loaderClass) = task
         return pageRepository.findByLoaderClassAndTaskId(loaderClass, taskId)
-            .switchIfEmpty { pageRepository.save(Page(loaderClass, taskId, parent, status = Status.NEW)) }
+            .switchIfEmpty {
+                logger.info("creating new page $task")
+                pageRepository.save(Page(loaderClass, taskId, parent, status = Status.NEW))
+            }
+            .onErrorResume {
+                if (it is OptimisticLockingFailureException || it is DuplicateKeyException) {
+                    Mono.empty()
+                } else {
+                    Mono.error(it)
+                }
+            }
     }
 
     private fun markLoading(parent: LoaderTask?, loaderClass: String, taskId: String): Mono<Page> {

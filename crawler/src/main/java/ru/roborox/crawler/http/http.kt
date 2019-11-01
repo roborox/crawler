@@ -27,8 +27,14 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 interface HttpClient {
-    fun get(url: String, cookie: MultiValueMap<String, String> = LinkedMultiValueMap(), clients: WebClients = DefaultWebClients, handleRedirect: Boolean = false, useRaw: Boolean = false): Mono<HttpResponse<String?>>
+    fun get(url: String, cookie: MultiValueMap<String, String> = LinkedMultiValueMap(), clients: WebClients = DefaultWebClients, handleRedirect: Boolean = false, rawUse: RawUse = RawUse.SAVE): Mono<HttpResponse<String?>>
     fun getBytes(url: String, cookie: MultiValueMap<String, String> = LinkedMultiValueMap(), clients: WebClients = DefaultWebClients): Mono<HttpResponse<Flux<DataBuffer>>>
+}
+
+enum class RawUse {
+    IGNORE,
+    USE_CACHED,
+    SAVE
 }
 
 private val client = WebClient.builder()
@@ -48,21 +54,21 @@ object DefaultWebClients : WebClients {
 
 @Component
 class HttpClientImpl(private val rawRepository: RawRepository) : HttpClient {
-    override fun get(url: String, cookie: MultiValueMap<String, String>, clients: WebClients, handleRedirect: Boolean, useRaw: Boolean): Mono<HttpResponse<String?>> {
-        return if (useRaw) {
+    override fun get(url: String, cookie: MultiValueMap<String, String>, clients: WebClients, handleRedirect: Boolean, rawUse: RawUse): Mono<HttpResponse<String?>> {
+        return if (rawUse == RawUse.USE_CACHED) {
             rawRepository.findById(url).map {
                 logger.info("get task using raw")
                 HttpResponse<String?>(HttpStatus.OK, null, it.content)
             }.switchIfEmpty {
                 logger.info("get task failed. using http")
-                getWithUrl(clients, url, cookie, handleRedirect)
+                getWithUrl(clients, url, cookie, handleRedirect, rawUse)
             }
         } else {
-            getWithUrl(clients, url, cookie, handleRedirect)
+            getWithUrl(clients, url, cookie, handleRedirect, rawUse)
         }
     }
 
-    private fun getWithUrl(clients: WebClients, url: String, cookie: MultiValueMap<String, String>, handleRedirect: Boolean): Mono<HttpResponse<String?>> {
+    private fun getWithUrl(clients: WebClients, url: String, cookie: MultiValueMap<String, String>, handleRedirect: Boolean, rawUse: RawUse): Mono<HttpResponse<String?>> {
         return LoggingUtils.withMarker { marker ->
             clients.useResource { clientAndProxy ->
                 logger.info(marker, "get $url using ${clientAndProxy.proxy}")
@@ -96,11 +102,15 @@ class HttpClientImpl(private val rawRepository: RawRepository) : HttpClient {
                             resp.toMono()
                         }
                     }.flatMap {
-                        if (it.body != null)
-                            rawRepository.save(Raw(id = url, content = it.body))
-                                .thenReturn(it)
-                        else
+                        if (rawUse != RawUse.IGNORE) {
+                            if (it.body != null)
+                                rawRepository.save(Raw(id = url, content = it.body))
+                                    .thenReturn(it)
+                            else
+                                it.toMono()
+                        } else {
                             it.toMono()
+                        }
                     }
             }
         }
@@ -109,7 +119,7 @@ class HttpClientImpl(private val rawRepository: RawRepository) : HttpClient {
     override fun getBytes(url: String, cookie: MultiValueMap<String, String>, clients: WebClients): Mono<HttpResponse<Flux<DataBuffer>>> {
         return LoggingUtils.withMarker { marker ->
             clients.useResource { clientAndProxy ->
-                logger.info(marker, "get $url using ${clientAndProxy.proxy} client:#${clientAndProxy.client.hashCode()}")
+                logger.info(marker, "get bytes $url using ${clientAndProxy.proxy} client:#${clientAndProxy.client.hashCode()}")
                 clientAndProxy.client.get()
                     .uri(url)
                     .accept(APPLICATION_PDF)
@@ -134,6 +144,9 @@ data class HttpResponse<T>(
     override fun toString(): String {
         return "HttpResponse(status=$status, headers=$headers)"
     }
+
+    val contentType: String?
+        get() = headers?.header(HttpHeaders.CONTENT_TYPE)?.first()
 }
 
 fun <T> Mono<HttpResponse<T>>.ifChanged(page: Page, loader: (T?) -> Mono<LoadResult>): Mono<LoadResult> {

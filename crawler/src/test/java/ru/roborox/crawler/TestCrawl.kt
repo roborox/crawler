@@ -67,7 +67,7 @@ class AfterTestCrawlReloadable : AfterTestCrawl()
 @PageLoader(minRate = Duration(value = 0))
 class TestCrawlNeverReload : Loader {
     override fun load(page: Page): Mono<LoadResult> {
-        return LoadResult.SuccessResult(listOf(AfterTestCrawlNeverReload::class.newTask(""))).toMono()
+        return LoadResult.SuccessResult(listOf(AfterTestCrawlNeverReload::class.newTask("neverReload"))).toMono()
     }
 }
 

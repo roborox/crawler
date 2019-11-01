@@ -32,6 +32,7 @@ data class Page(
     val lastLoadAttempt: Date? = null,
     val nextStartDate: Date? = null,
     val lastLoadDate: Date? = null,
+    val reparse: Boolean? = null,
     @LastModifiedDate
     val lastUpdate: Date? = null,
     @CreatedDate

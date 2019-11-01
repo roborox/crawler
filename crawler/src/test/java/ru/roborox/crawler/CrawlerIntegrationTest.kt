@@ -65,6 +65,7 @@ class CrawlerIntegrationTest : AbstractIntegrationTest() {
         crawler.crawl(null, "ROOT", testCrawlNeverReload).block()
         Thread.sleep(1000)
         val page1 = mongo.find<Page>(Query(Criteria.where("loaderClass").`is`(AfterTestCrawlNeverReload::class.java.name))).blockFirst()!!
+        logger.info("page1: $page1")
         crawler.crawl(null, "ROOT", testCrawlNeverReload).block()
         Thread.sleep(1000)
         val page2 = mongo.find<Page>(Query(Criteria.where("loaderClass").`is`(AfterTestCrawlNeverReload::class.java.name))).blockFirst()!!
@@ -73,5 +74,4 @@ class CrawlerIntegrationTest : AbstractIntegrationTest() {
         logger.info("page2: $page2")
         assertEquals(page1.lastUpdate, page2.lastUpdate)
     }
-
 }
